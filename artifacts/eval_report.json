@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-04-14T15:00:45.306737",
+  "day08_single_agent": {
+    "source": "day08-group06-E402 (tuning-log.md + grading_run.json)",
+    "pipeline": "single-agent RAG: dense retrieval + cross-encoder rerank, gpt-4o-mini",
+    "total_questions_grading": 10,
+    "grading_raw_score": "98/98",
+    "faithfulness": "5.00/5",
+    "answer_relevance": "4.60/5",
+    "context_recall": "5.00/5",
+    "completeness": "3.80/5",
+    "abstain_rate": "1/10 (10%)",
+    "abstain_example": "gq07 (Approval Matrix) — abstain đúng khi chunk thiếu alias",
+    "rerank_latency_overhead_ms": 1200,
+    "avg_latency_ms_est": 1850,
+    "multi_hop_accuracy": "N/A (Day 08 không phân loại multi-hop)",
+    "routing_visibility": "N/A (single-agent, không có supervisor)",
+    "weakest_questions_baseline": [
+      "q07 (alias mapping)",
+      "q09 (ERR-403 out-of-scope)",
+      "q10 (VIP refund)"
+    ]
+  },
+  "day09_multi_agent": {
+    "total_traces": 15,
+    "routing_distribution": {
+      "retrieval_worker": "8/15 (53%)",
+      "policy_tool_worker": "7/15 (46%)"
+    },
+    "avg_confidence": 0.75,
+    "avg_latency_ms": 0,
+    "mcp_usage_rate": "0/15 (0%)",
+    "hitl_rate": "1/15 (6%)",
+    "top_sources": [
+      [
+        "sla_p1_2026.txt",
+        15
+      ]
+    ]
+  },
+  "routing_accuracy": {
+    "routing_match": "14/15",
+    "routing_match_rate": 0.933,
+    "mismatches": [
+      {
+        "id": "q02",
+        "expected": "retrieval_worker",
+        "actual": "policy_tool_worker"
+      }
+    ]
+  },
+  "analysis": {
+    "routing_visibility": "Day 09 có route_reason cho từng câu → dễ debug hơn Day 08",
+    "latency_delta": "TODO: Điền delta latency thực tế",
+    "accuracy_delta": "TODO: Điền delta accuracy thực tế từ grading",
+    "debuggability": "Multi-agent: có thể test từng worker độc lập. Single-agent: không thể.",
+    "mcp_benefit": "Day 09 có thể extend capability qua MCP không cần sửa core. Day 08 phải hard-code."
+  }
+}

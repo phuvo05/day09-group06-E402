@@ -53,6 +53,8 @@ def run_test_questions(questions_file: str = "data/test_questions.json") -> list
         try:
             result = run_graph(question_text)
             result["question_id"] = q_id
+            # Ensure unique trace filename per question (avoid overwrite when timestamps collide)
+            result["run_id"] = f"{result.get('run_id','run')}_{q_id}"
 
             # Save individual trace
             trace_file = save_trace(result, f"artifacts/traces")
@@ -185,7 +187,7 @@ def analyze_traces(traces_dir: str = "artifacts/traces") -> dict:
 
     traces = []
     for fname in trace_files:
-        with open(os.path.join(traces_dir, fname)) as f:
+        with open(os.path.join(traces_dir, fname), encoding="utf-8") as f:
             traces.append(json.load(f))
 
     # Compute metrics
@@ -235,28 +237,74 @@ def analyze_traces(traces_dir: str = "artifacts/traces") -> dict:
 # 4. Compare Single vs Multi Agent
 # ─────────────────────────────────────────────
 
+def compute_routing_accuracy(
+    traces_dir: str = "artifacts/traces",
+    questions_file: str = "data/test_questions.json",
+) -> dict:
+    """So sánh supervisor_route thực tế vs expected_route trong test_questions."""
+    if not (os.path.exists(traces_dir) and os.path.exists(questions_file)):
+        return {}
+    with open(questions_file, encoding="utf-8") as f:
+        questions = {q["id"]: q for q in json.load(f)}
+    traces = {}
+    for fname in os.listdir(traces_dir):
+        if not fname.endswith(".json"):
+            continue
+        with open(os.path.join(traces_dir, fname), encoding="utf-8") as f:
+            t = json.load(f)
+        qid = t.get("question_id")
+        if qid:
+            traces[qid] = t
+    match, total, mismatches = 0, 0, []
+    for qid, q in questions.items():
+        expected = q.get("expected_route")
+        t = traces.get(qid)
+        if not (expected and t):
+            continue
+        total += 1
+        actual = t.get("supervisor_route", "")
+        if actual == expected:
+            match += 1
+        else:
+            mismatches.append({"id": qid, "expected": expected, "actual": actual})
+    return {
+        "routing_match": f"{match}/{total}",
+        "routing_match_rate": round(match / total, 3) if total else 0,
+        "mismatches": mismatches,
+    }
+
+
 def compare_single_vs_multi(
     multi_traces_dir: str = "artifacts/traces",
     day08_results_file: Optional[str] = None,
 ) -> dict:
     """
     So sánh Day 08 (single agent RAG) vs Day 09 (multi-agent).
-
-    TODO Sprint 4: Điền kết quả thực tế từ Day 08 vào day08_baseline.
-
-    Returns:
-        dict của comparison metrics
+    Baseline Day 08 lấy từ eval.py của lab Day 08 (hoặc giả lập nếu chưa có).
     """
     multi_metrics = analyze_traces(multi_traces_dir)
+    routing_acc = compute_routing_accuracy(multi_traces_dir)
 
-    # TODO: Load Day 08 results nếu có
-    # Nếu không có, dùng baseline giả lập để format
+    # Baseline Day 08 — số thật từ lab Day 08 của nhóm 06-E402.
+    # Nguồn: day08-group06-E402/docs/tuning-log.md (scorecard Variant 1: dense + rerank)
+    #        day08-group06-E402/logs/grading_run.json (10 câu grading)
+    #        day08-group06-E402/reports/group_report.md
     day08_baseline = {
-        "total_questions": 15,
-        "avg_confidence": 0.0,          # TODO: Điền từ Day 08 eval.py
-        "avg_latency_ms": 0,            # TODO: Điền từ Day 08
-        "abstain_rate": "?",            # TODO: Điền từ Day 08
-        "multi_hop_accuracy": "?",      # TODO: Điền từ Day 08
+        "source": "day08-group06-E402 (tuning-log.md + grading_run.json)",
+        "pipeline": "single-agent RAG: dense retrieval + cross-encoder rerank, gpt-4o-mini",
+        "total_questions_grading": 10,
+        "grading_raw_score": "98/98",
+        "faithfulness": "5.00/5",
+        "answer_relevance": "4.60/5",
+        "context_recall": "5.00/5",
+        "completeness": "3.80/5",
+        "abstain_rate": "1/10 (10%)",
+        "abstain_example": "gq07 (Approval Matrix) — abstain đúng khi chunk thiếu alias",
+        "rerank_latency_overhead_ms": 1200,
+        "avg_latency_ms_est": 1850,
+        "multi_hop_accuracy": "N/A (Day 08 không phân loại multi-hop)",
+        "routing_visibility": "N/A (single-agent, không có supervisor)",
+        "weakest_questions_baseline": ["q07 (alias mapping)", "q09 (ERR-403 out-of-scope)", "q10 (VIP refund)"],
     }
 
     if day08_results_file and os.path.exists(day08_results_file):
@@ -267,6 +315,7 @@ def compare_single_vs_multi(
         "generated_at": datetime.now().isoformat(),
         "day08_single_agent": day08_baseline,
         "day09_multi_agent": multi_metrics,
+        "routing_accuracy": routing_acc,
         "analysis": {
             "routing_visibility": "Day 09 có route_reason cho từng câu → dễ debug hơn Day 08",
             "latency_delta": "TODO: Điền delta latency thực tế",
@@ -330,9 +379,54 @@ if __name__ == "__main__":
             print("   Nộp file này trước 18:00!")
 
     elif args.analyze:
-        # Phân tích traces
+        # Phân tích traces — chỉ in ra terminal, KHÔNG ghi file nào
         metrics = analyze_traces()
         print_metrics(metrics)
+
+        # Routing accuracy (expected vs actual)
+        routing_acc = compute_routing_accuracy()
+        if routing_acc:
+            print("\n🎯 Routing Accuracy (expected vs actual):")
+            print(f"  match      : {routing_acc.get('routing_match')}")
+            print(f"  match_rate : {routing_acc.get('routing_match_rate')}")
+            mm = routing_acc.get("mismatches", [])
+            print(f"  mismatches : {len(mm)}")
+            for m in mm:
+                print(f"    ✗ {m['id']}: expected={m['expected']}, actual={m['actual']}")
+
+        # Per-trace summary bảng ngắn
+        traces_dir = "artifacts/traces"
+        if os.path.exists(traces_dir):
+            files = sorted(f for f in os.listdir(traces_dir) if f.endswith(".json"))
+            print(f"\n📝 Per-trace summary ({len(files)} traces):")
+            print(f"  {'qid':<5} {'route':<22} {'workers':<45} {'src':<22} {'conf':<5} {'hitl':<5} {'lat_ms':<7}")
+            print(f"  {'-'*5} {'-'*22} {'-'*45} {'-'*22} {'-'*5} {'-'*5} {'-'*7}")
+            for fname in files:
+                with open(os.path.join(traces_dir, fname), encoding="utf-8") as f:
+                    t = json.load(f)
+                qid = t.get("question_id", fname[:6])
+                route = t.get("supervisor_route", "?")
+                workers = ",".join(t.get("workers_called", []))
+                srcs = ",".join(t.get("retrieved_sources", []))[:22]
+                conf = t.get("confidence", 0)
+                hitl = "Y" if t.get("hitl_triggered") else "-"
+                lat = t.get("latency_ms", 0) or 0
+                print(f"  {qid:<5} {route:<22} {workers[:45]:<45} {srcs:<22} {conf:<5.2f} {hitl:<5} {lat:<7}")
+
+        # Day 08 baseline comparison (in-memory, không save)
+        print("\n📈 Day 08 vs Day 09 (snapshot, không ghi file):")
+        comp = compare_single_vs_multi()
+        d08 = comp.get("day08_single_agent", {})
+        d09 = comp.get("day09_multi_agent", {})
+        rows = [
+            ("avg_confidence", d08.get("avg_confidence"), d09.get("avg_confidence")),
+            ("avg_latency_ms", d08.get("avg_latency_ms"), d09.get("avg_latency_ms")),
+            ("abstain/hitl_rate", d08.get("abstain_rate"), d09.get("hitl_rate")),
+            ("multi_hop_accuracy", d08.get("multi_hop_accuracy"), "—"),
+        ]
+        print(f"  {'metric':<22} {'Day08':<18} {'Day09':<18}")
+        for m, a, b in rows:
+            print(f"  {m:<22} {str(a):<18} {str(b):<18}")
 
     elif args.compare:
         # So sánh single vs multi
@@ -356,4 +450,3 @@ if __name__ == "__main__":
         report_file = save_eval_report(comparison)
         print(f"\n📄 Eval report → {report_file}")
         print("\n✅ Sprint 4 complete!")
-        print("   Next: Điền docs/ templates và viết reports/")
