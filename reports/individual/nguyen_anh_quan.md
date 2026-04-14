@@ -28,7 +28,7 @@ Tôi đã cân nhắc 2 lựa chọn:
 1. Chỉ dùng dense retrieval với vector DB và embedding API.
 2. Chỉ dùng lexical retrieval đơn giản.
 
-Tôi không chọn (1) vì môi trường lab có lúc thiếu package/API key; nếu phụ thuộc cứng thì worker crash, ảnh hưởng trace và grading. Tôi không chọn (2) vì lexical-only kém hơn khi câu hỏi khác từ vựng tài liệu. Vì vậy tôi chọn dense-first để giữ chất lượng, fallback lexical để giữ khả năng chạy ổn định.
+Tôi không chọn (1) vì môi trường lab có rủi ro phụ thuộc runtime (model/API/index), nếu phụ thuộc cứng thì worker crash, ảnh hưởng trace và grading. Tôi không chọn (2) vì lexical-only kém hơn khi câu hỏi khác từ vựng tài liệu. Vì vậy tôi chọn dense-first để giữ chất lượng, fallback lexical để giữ khả năng chạy ổn định.
 
 Trade-off là khi rơi vào fallback, độ chính xác semantic giảm. Đổi lại, hệ thống không “down” và vẫn trả evidence hợp lệ.
 
@@ -44,7 +44,7 @@ except Exception as e:
     return _lexical_fallback(query, top_k=top_k)
 ```
 
-Kết quả test độc lập cho thấy khi thiếu `chromadb`, retrieval vẫn trả chunks đúng domain (`sla_p1_2026.txt`, `policy_refund_v4.txt`, `access_control_sop.txt`) thay vì fail.
+Kết quả test độc lập bằng `.venv/bin/python` cho thấy retrieval trả chunks đúng domain (`sla_p1_2026.txt`, `policy_refund_v4.txt`, `access_control_sop.txt`). Ngoài ra tôi đã index lại collection `day09_docs` (77 chunks) để dense retrieval chạy ổn định trong môi trường nhóm.
 
 ## 3. Tôi đã sửa một lỗi gì?
 
@@ -71,7 +71,7 @@ elif "[" not in answer and chunks:
 elif not re.search(r"\[\d+\]", answer) and chunks:
 ```
 
-Sau khi sửa, test `python3 workers/synthesis.py` cho output luôn có `[1]` ở case có evidence và vẫn abstain đúng khi `retrieved_chunks=[]`.
+Sau khi sửa, test bằng `.venv/bin/python` cho output luôn có `[1]` ở case có evidence và vẫn abstain đúng khi `retrieved_chunks=[]`.
 
 ## 4. Tôi tự đánh giá đóng góp của mình
 
