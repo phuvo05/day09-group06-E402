@@ -16,7 +16,9 @@ Gọi độc lập để test:
 """
 
 import os
-import sys
+import re
+from pathlib import Path
+from typing import Dict, List
 
 # ─────────────────────────────────────────────
 # Worker Contract (xem contracts/worker_contracts.yaml)
@@ -81,6 +83,56 @@ def _get_collection():
     return collection
 
 
+def _tokenize(text: str) -> List[str]:
+    return re.findall(r"\w+", text.lower())
+
+
+def _lexical_fallback(query: str, top_k: int = DEFAULT_TOP_K) -> list:
+    """
+    Fallback retrieval khi chưa có ChromaDB:
+    quét data/docs/*.txt và trả về các đoạn có overlap cao với query.
+    """
+    docs_dir = Path("data/docs")
+    if not docs_dir.exists():
+        return []
+
+    query_tokens = set(_tokenize(query))
+    if not query_tokens:
+        return []
+
+    candidates: List[Dict] = []
+    for file_path in docs_dir.glob("*.txt"):
+        try:
+            raw_text = file_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", raw_text) if p.strip()]
+        for para in paragraphs:
+            para_tokens = set(_tokenize(para))
+            if not para_tokens:
+                continue
+            overlap = len(query_tokens & para_tokens)
+            if overlap == 0:
+                continue
+
+            score = min(1.0, overlap / max(1, len(query_tokens)))
+            candidates.append(
+                {
+                    "text": para,
+                    "source": file_path.name,
+                    "score": round(float(score), 4),
+                    "metadata": {
+                        "source": file_path.name,
+                        "retrieval_method": "lexical_fallback",
+                    },
+                }
+            )
+
+    candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return candidates[:top_k]
+
+
 def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
     """
     Dense retrieval: embed query → query ChromaDB → trả về top_k chunks.
@@ -93,11 +145,9 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
     Returns:
         list of {"text": str, "source": str, "score": float, "metadata": dict}
     """
-    # TODO: Implement dense retrieval
-    embed = _get_embedding_fn()
-    query_embedding = embed(query)
-
     try:
+        embed = _get_embedding_fn()
+        query_embedding = embed(query)
         collection = _get_collection()
         results = collection.query(
             query_embeddings=[query_embedding],
@@ -121,8 +171,8 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
 
     except Exception as e:
         print(f"⚠️  ChromaDB query failed: {e}")
-        # Fallback: return empty (abstain)
-        return []
+        # Fallback lexical trên data/docs
+        return _lexical_fallback(query, top_k=top_k)
 
 
 def run(state: dict) -> dict:
@@ -154,7 +204,8 @@ def run(state: dict) -> dict:
     try:
         chunks = retrieve_dense(task, top_k=top_k)
 
-        sources = list({c["source"] for c in chunks})
+        # Giữ thứ tự xuất hiện, đồng thời unique
+        sources = list(dict.fromkeys(c["source"] for c in chunks))
 
         state["retrieved_chunks"] = chunks
         state["retrieved_sources"] = sources
@@ -173,8 +224,9 @@ def run(state: dict) -> dict:
         state["retrieved_sources"] = []
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
-    # Ghi worker IO vào state để trace
+    # Ghi worker IO vào state để trace (giữ cả key mới và key cũ để tương thích)
     state.setdefault("worker_io_logs", []).append(worker_io)
+    state["worker_io_log"] = state["worker_io_logs"]
 
     return state
 
