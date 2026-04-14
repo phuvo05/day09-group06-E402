@@ -18,6 +18,7 @@ env/
 
 # Environment variables
 .env
+mark_down/
 
 # OS
 .DS_Store
