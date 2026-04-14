@@ -368,9 +368,54 @@ if __name__ == "__main__":
             print("   Nộp file này trước 18:00!")
 
     elif args.analyze:
-        # Phân tích traces
+        # Phân tích traces — chỉ in ra terminal, KHÔNG ghi file nào
         metrics = analyze_traces()
         print_metrics(metrics)
+
+        # Routing accuracy (expected vs actual)
+        routing_acc = compute_routing_accuracy()
+        if routing_acc:
+            print("\n🎯 Routing Accuracy (expected vs actual):")
+            print(f"  match      : {routing_acc.get('routing_match')}")
+            print(f"  match_rate : {routing_acc.get('routing_match_rate')}")
+            mm = routing_acc.get("mismatches", [])
+            print(f"  mismatches : {len(mm)}")
+            for m in mm:
+                print(f"    ✗ {m['id']}: expected={m['expected']}, actual={m['actual']}")
+
+        # Per-trace summary bảng ngắn
+        traces_dir = "artifacts/traces"
+        if os.path.exists(traces_dir):
+            files = sorted(f for f in os.listdir(traces_dir) if f.endswith(".json"))
+            print(f"\n📝 Per-trace summary ({len(files)} traces):")
+            print(f"  {'qid':<5} {'route':<22} {'workers':<45} {'src':<22} {'conf':<5} {'hitl':<5} {'lat_ms':<7}")
+            print(f"  {'-'*5} {'-'*22} {'-'*45} {'-'*22} {'-'*5} {'-'*5} {'-'*7}")
+            for fname in files:
+                with open(os.path.join(traces_dir, fname), encoding="utf-8") as f:
+                    t = json.load(f)
+                qid = t.get("question_id", fname[:6])
+                route = t.get("supervisor_route", "?")
+                workers = ",".join(t.get("workers_called", []))
+                srcs = ",".join(t.get("retrieved_sources", []))[:22]
+                conf = t.get("confidence", 0)
+                hitl = "Y" if t.get("hitl_triggered") else "-"
+                lat = t.get("latency_ms", 0) or 0
+                print(f"  {qid:<5} {route:<22} {workers[:45]:<45} {srcs:<22} {conf:<5.2f} {hitl:<5} {lat:<7}")
+
+        # Day 08 baseline comparison (in-memory, không save)
+        print("\n📈 Day 08 vs Day 09 (snapshot, không ghi file):")
+        comp = compare_single_vs_multi()
+        d08 = comp.get("day08_single_agent", {})
+        d09 = comp.get("day09_multi_agent", {})
+        rows = [
+            ("avg_confidence", d08.get("avg_confidence"), d09.get("avg_confidence")),
+            ("avg_latency_ms", d08.get("avg_latency_ms"), d09.get("avg_latency_ms")),
+            ("abstain/hitl_rate", d08.get("abstain_rate"), d09.get("hitl_rate")),
+            ("multi_hop_accuracy", d08.get("multi_hop_accuracy"), "—"),
+        ]
+        print(f"  {'metric':<22} {'Day08':<18} {'Day09':<18}")
+        for m, a, b in rows:
+            print(f"  {m:<22} {str(a):<18} {str(b):<18}")
 
     elif args.compare:
         # So sánh single vs multi
@@ -394,4 +439,3 @@ if __name__ == "__main__":
         report_file = save_eval_report(comparison)
         print(f"\n📄 Eval report → {report_file}")
         print("\n✅ Sprint 4 complete!")
-        print("   Next: Điền docs/ templates và viết reports/")
