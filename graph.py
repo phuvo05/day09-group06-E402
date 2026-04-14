@@ -330,4 +330,4 @@ if __name__ == "__main__":
         trace_file = save_trace(result)
         print(f"  Trace saved → {trace_file}")
 
-    print("\n✅ graph.py test complete. Implement TODO sections in Sprint 1 & 2.")
+    print("\n✅ graph.py test complete. Sprint 1 Supervisor done.")
