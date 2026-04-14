@@ -1,5 +1,6 @@
-# Báo Cáo Cá Nhân — Võ Thiên Phú
+# Báo Cáo Cá Nhân
 
+**Họ tên:** Võ Thiên Phú  
 **MSSV:** 2A202600336
 **Vai trò:** Supervisor Owner (Sprint 1)
 **Ngày nộp:** 2026-04-14
