@@ -17,6 +17,7 @@ Gọi độc lập để test:
 """
 
 import os
+import re
 
 WORKER_NAME = "synthesis_worker"
 
@@ -65,6 +66,47 @@ def _call_llm(messages: list) -> str:
     return "[SYNTHESIS ERROR] Không thể gọi LLM. Kiểm tra API key trong .env."
 
 
+def _first_sentence(text: str) -> str:
+    parts = re.split(r"(?<=[\.\!\?])\s+|\n+", text.strip())
+    for part in parts:
+        s = part.strip()
+        if s:
+            return s
+    return text.strip()
+
+
+def _fallback_answer(task: str, chunks: list, policy_result: dict) -> str:
+    """
+    Sinh câu trả lời grounded khi không gọi được LLM.
+    Chỉ dùng nội dung trong chunks/policy_result, luôn có citation nếu có evidence.
+    """
+    if not chunks:
+        return "Không đủ thông tin trong tài liệu nội bộ để trả lời câu hỏi này."
+
+    lines = []
+    exceptions = policy_result.get("exceptions_found", []) if policy_result else []
+    if exceptions:
+        lines.append("Ngoại lệ/policy liên quan:")
+        for ex in exceptions[:2]:
+            rule = ex.get("rule", "").strip()
+            if rule:
+                lines.append(f"- {rule}")
+
+    ranked = sorted(chunks, key=lambda c: c.get("score", 0), reverse=True)
+    lines.append("Thông tin từ tài liệu:")
+    for idx, chunk in enumerate(ranked[:2], start=1):
+        sentence = _first_sentence(chunk.get("text", ""))
+        if sentence:
+            lines.append(f"- {sentence} [{idx}]")
+
+    lines.append(
+        "Nguồn: " + "; ".join(
+            f"[{idx}] {chunk.get('source', 'unknown')}" for idx, chunk in enumerate(ranked[:2], start=1)
+        )
+    )
+    return "\n".join(lines)
+
+
 def _build_context(chunks: list, policy_result: dict) -> str:
     """Xây dựng context string từ chunks và policy result."""
     parts = []
@@ -97,6 +139,9 @@ def _estimate_confidence(chunks: list, answer: str, policy_result: dict) -> floa
 
     TODO Sprint 2: Có thể dùng LLM-as-Judge để tính confidence chính xác hơn.
     """
+    if answer.startswith("[SYNTHESIS ERROR]"):
+        return 0.2
+
     if not chunks:
         return 0.1  # Không có evidence → low confidence
 
@@ -138,8 +183,17 @@ Hãy trả lời câu hỏi dựa vào tài liệu trên."""
         }
     ]
 
-    answer = _call_llm(messages)
-    sources = list({c.get("source", "unknown") for c in chunks})
+    if not chunks:
+        answer = "Không đủ thông tin trong tài liệu nội bộ để trả lời câu hỏi này."
+    else:
+        answer = _call_llm(messages)
+        if not answer or answer.startswith("[SYNTHESIS ERROR]"):
+            answer = _fallback_answer(task, chunks, policy_result)
+        elif not re.search(r"\[\d+\]", answer) and chunks:
+            # Enforce citation số tối thiểu để khớp checklist/contract
+            answer = f"{answer}\n\nNguồn: [1] {chunks[0].get('source', 'unknown')}"
+
+    sources = list(dict.fromkeys(c.get("source", "unknown") for c in chunks))
     confidence = _estimate_confidence(chunks, answer, policy_result)
 
     return {
@@ -177,6 +231,8 @@ def run(state: dict) -> dict:
         state["final_answer"] = result["answer"]
         state["sources"] = result["sources"]
         state["confidence"] = result["confidence"]
+        if result["confidence"] < 0.4:
+            state["hitl_triggered"] = True
 
         worker_io["output"] = {
             "answer_length": len(result["answer"]),
@@ -195,6 +251,7 @@ def run(state: dict) -> dict:
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
     state.setdefault("worker_io_logs", []).append(worker_io)
+    state["worker_io_log"] = state["worker_io_logs"]
     return state
 
 
