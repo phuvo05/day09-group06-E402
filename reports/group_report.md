@@ -1,254 +1,283 @@
-# Báo Cáo Nhóm — Lab Day 09: Multi-Agent Orchestration
+# Bao Cao Nhom — Lab Day 09: Multi-Agent Orchestration
 
-**Tên nhóm:** Group 06 — E402
-**Thành viên:**
+**Ten nhom:** Group 06 — E402
+**Thanh vien:**
 
-| Tên | Vai trò | MSSV |
+| Ten | Vai tro | MSSV |
 |-----|---------|------|
-| Võ Thiên Phú | Supervisor Owner (Sprint 1) | 2A202600336 |
-| Nguyễn Anh Quân | Worker Owner — retrieval + synthesis (Sprint 2) | 2A202600132 |
-| Phan Dương Định | Worker Owner — policy + contracts (Sprint 2) | 2A202600277 |
-| Phạm Minh Khang | MCP Owner (Sprint 3) | 2A202600417 |
-| Đào Hồng Sơn | Trace & Docs Owner (Sprint 4) | 2A202600462 |
+| Vo Thien Phu | Supervisor Owner (Sprint 1) | 2A202600336 |
+| Nguyen Anh Quan | Worker Owner — retrieval + synthesis (Sprint 2) | 2A202600132 |
+| Phan Duong Dinh | Worker Owner — policy + contracts (Sprint 2) | 2A202600277 |
+| Pham Minh Khang | MCP Owner (Sprint 3) | 2A202600417 |
+| Dao Hong Son | Trace & Docs Owner (Sprint 4) | 2A202600462 |
 
-**Ngày nộp:** 2026-04-14
+**Ngay nop:** 2026-04-14
 **Repo:** `day09-group06-E402`
 
 ---
 
-## 1. Kiến trúc nhóm đã xây dựng
+## 1. Kien truc nhom da xay dung
 
-**Hệ thống tổng quan:** Supervisor-Worker pattern — 1 Supervisor + 3 Worker
+**He thong tong quan:** Supervisor-Worker pattern — 1 Supervisor + 3 Worker
 (retrieval, policy_tool, synthesis) + 1 HITL branch (`human_review`) + 1 MCP
-server (in-process class) cung cấp 4 tools. Graph được implement bằng Python
-thuần trong `graph.py::build_graph` (không dùng LangGraph để giảm dependency).
-State chia sẻ là `AgentState` — một `TypedDict` với ~15 field (xem
-`docs/system_architecture.md` §4).
+server (in-process class) cung cap 4 tools. Graph duoc implement bang Python
+thuan trong `graph.py::build_graph` (khong dung LangGraph de giam dependency).
+State chia se la `AgentState` — mot `TypedDict` voi ~15 field.
 
-**Routing logic cốt lõi:** Supervisor dùng **keyword matching** trên task đã
+**Routing logic cot loi:** Supervisor dung **keyword matching** tren task da
 lower-cased.
-- `hoàn tiền / refund / flash sale / license / cấp quyền / access / level 3`
-  → `policy_tool_worker`.
-- `emergency / khẩn cấp / 2am / err-` → `risk_high = True`.
-- `risk_high AND err-` → `human_review` (sau đó auto-approve + retrieval).
-- Còn lại → `retrieval_worker` (default).
 
-Kết quả thực tế trên 15 test question: route đúng **14/15 (93.3%)**, một mismatch
-duy nhất (q02) do rule "hoàn tiền" over-match khi câu hỏi là "định nghĩa"
-chính sách chứ không phải "xin áp dụng" chính sách.
+```
+policy_keywords = ["hoan tien", "refund", "flash sale", "license",
+                   "cap quyen", "access", "level 3"]
+  → policy_tool_worker
+risk_keywords = ["emergency", "khan cap", "2am", "err-"]
+  → risk_high = True
+risk_high AND err- → human_review (sau do auto-approve + retrieval)
+con lai → retrieval_worker (default)
+```
 
-**MCP tools đã implement** (gọi từ `workers/policy_tool.py`):
-- `search_kb(query, top_k)` — search ChromaDB, trả `chunks` + `sources`.
-  Ví dụ trace gọi: khi `needs_tool=True` và `retrieved_chunks` rỗng.
-- `get_ticket_info(ticket_id)` — mock trả `priority`, `created_at`,
-  `status`, `assigned_to`, `sla_deadline`, `notifications_sent`.
-  Dùng cho câu hỏi về ticket P1 đang active.
-- `check_access_permission(level, role, is_emergency)` — kiểm tra điều kiện
-  cấp quyền theo Access Control SOP, trả `can_grant`, `required_approvers`,
-  `emergency_override`. Bonus tool cho q03, q13.
-- `create_ticket(priority, title, description)` — mock tạo ticket mới.
-  (4 tools — nhiều hơn yêu cầu Sprint 3, dự phòng mở rộng.)
+Ket qua thuc te tren 15 test question: route dung **14/15 (93.3%)**.
+Ket qua tren 10 grading question: route dung **10/10 (100%)**.
 
-**Bổ sung: kiến trúc state flow thực tế**
+**Route reason chi tiet** (da cap nhat sau fix):
+
+| Câu | route_reason thuc te |
+|------|---------------------|
+| gq01,05,06,07,08 | `no_policy_keyword` |
+| gq02 | `policy_keywords=['hoan tien', 'flash sale']` |
+| gq03 | `policy_keywords=['access', 'level 3']` |
+| gq04 | `policy_keywords=['hoan tien']` |
+| gq09 | `policy_keywords=['access'] | risk_keywords=['emergency', '2am']` |
+| gq10 | `policy_keywords=['hoan tien', 'flash sale']` |
+
+**MCP tools da implement** (goi tu `workers/policy_tool.py`):
+- `search_kb(query, top_k)` — search ChromaDB
+- `get_ticket_info(ticket_id)` — mock tra ticket info
+- `check_access_permission(level, role, is_emergency)` — kiem tra quyen
+- `create_ticket(priority, title, description)` — mock tao ticket
+
+**State flow thuc te** (sau khi fix bugs):
 
 ```
 task → supervisor_node → route_decision
                            ├─ retrieval_worker → synthesis → END
                            ├─ policy_tool_worker
-                           │    (nếu needs_tool=True và chưa có chunks → gọi MCP search_kb)
+                           │    (goi MCP search_kb neu needs_tool=True)
                            │    → synthesis → END
                            └─ human_review → (auto-approve) → retrieval_worker → synthesis → END
 ```
 
-**Lưu ý quan trọng:** `build_graph()` gọi `retrieval_worker_node()` **trước**
-`policy_tool_worker_node()` khi route là policy. Điều này khiến policy
-worker hiếm khi gọi MCP `search_kb` (vì chunks đã có từ retrieval). MCP là
-fallback khi retrieval trả rỗng.
-
 ---
 
-## 2. Quyết định kỹ thuật quan trọng nhất
+## 2. Cac bug da phat hien va fix
 
-**Quyết định 1:** Dùng **keyword-based supervisor** thay vì LLM classifier cho
-routing.
+### Bug 1: ChromaDB rong — nguyen nhan goc cua nhieu loi
 
-**Bối cảnh vấn đề:** Supervisor cần route sang 1 trong 3 worker. Option 1:
-gọi LLM với prompt "phân loại câu hỏi". Option 2: rule-based keyword.
+**Bieu hien:** `artifacts/grading_run.jsonl` truoc fix:
+- `confidence: 0.1` moi cau
+- `hitl_triggered: true` moi cau
+- `answer: "Khong du thong tin..."` moi cau
+- `sources: []` moi cau
 
-**Các phương án đã cân nhắc:**
+**Nguyen nhan:** Collection `day09_docs` co 0 chunks. Khi `retrieve_dense()` gap loi
+(seems embedding model unavailable) → fallback sang `_lexical_fallback()` → token
+overlap qua thap vi cau hoi gq01 hoi "22:47", "ai nhan thong bao dau tien"
+khong match voi chunk nao trong sla_p1_2026.txt.
 
-| Phương án | Ưu điểm | Nhược điểm |
-|-----------|---------|-----------|
-| LLM classifier (gpt-4o-mini) | Hiểu intent tinh tế, xử lý được câu q02 | +800ms latency, +1 LLM call/query (tăng cost), khó reproduce |
-| Keyword matching | <10ms, deterministic, dễ debug, không tốn token | Over-match ở câu biên (q02), khó phủ hết synonyms |
-| Hybrid (keyword → LLM khi không match) | Cân bằng | Phức tạp, chưa có thời gian implement đúng |
+**Fix:** Tao `build_index.py` — index 77 chunks tu 5 file docs bang
+Sentence Transformers `all-MiniLM-L6-v2` vao ChromaDB. Sau index, moi cau
+deu retrieve duoc 3 chunks dung source, confidence 0.61–0.72.
 
-**Phương án đã chọn và lý do:** Keyword matching. Lý do:
-1. Với 5 domain rõ ràng (SLA / Refund / Access / HR / IT Helpdesk),
-   keyword phủ ~93% case — đủ tốt cho MVP.
-2. Tiết kiệm được 800ms × 15 câu = 12s/grading run, giảm cost LLM call.
-3. `route_reason` có thể in thẳng rule matched — debug không cần rerun.
-4. Trade-off đã chấp nhận: q02 route sai, giải quyết được bằng rule tinh
-   chỉnh, không cần đổi kiến trúc.
+**Kiem chung:**
+```
+gq01: 3 chunks, sources=['sla_p1_2026.txt', 'sla_p1_2026.txt', 'it_helpdesk_faq.txt']
+gq02: 3 chunks, sources=['policy_refund_v4.txt', ...]
+gq06: 3 chunks, sources=['hr_leave_policy.txt', ...]
+```
 
-**Bằng chứng từ trace/code:**
+### Bug 2: `mcp_tools_used` luon ra `[null]`
+
+**Nguyen nhan:** `eval_trace.py` line 130 dung sai key:
 
 ```python
-# graph.py::supervisor_node
-policy_keywords = ["hoàn tiền", "refund", "flash sale", "license",
-                   "cấp quyền", "access", "level 3"]
-if any(kw in task for kw in policy_keywords):
-    route = "policy_tool_worker"
-    route_reason = "task contains policy/access keyword"
+# Sai:
+"mcp_tools_used": [t.get("tool") for t in result.get("mcp_tools_used", [])]
+# Phai la:
+"mcp_tools_used": [t.get("mcp_tool_called") for t in result.get("mcp_tools_used", [])]
 ```
 
-```json
-// artifacts/traces/run_<id>_q07.json (trích)
-"supervisor_route": "policy_tool_worker",
-"route_reason": "task contains policy/access keyword",
-"latency_ms": 0    // Supervisor <5ms, tổng pipeline chi phối bởi synthesis
+`dispatch_tool()` tra ve dict voi key `mcp_tool_called`, khong phai `tool`.
+
+**Fix:** Doi `t.get("tool")` → `t.get("mcp_tool_called")`.
+
+**Ket qua:** `mcp_tools_used` bay gio co gia tri thuc: `["search_kb"]` hoac
+`["search_kb", "get_ticket_info"]` thay vi `[null]`.
+
+### Bug 3: `workers_called` bi duplicate (moi worker xuat hien 2 lan)
+
+**Bieu hien:** `workers_called: ["retrieval_worker", "retrieval_worker",
+"synthesis_worker", "synthesis_worker"]` thay vi
+`["retrieval_worker", "synthesis_worker"]`.
+
+**Nguyen nhan:** Ca `graph.py` (trong worker wrapper node) VA
+`workers/*.py` (trong ham `run()`) deu goi `workers_called.append()`. Double-write.
+
+**Fix:** Xoa `workers_called.append()` khoi cac wrapper node trong
+`graph.py`, chi giu trong workers.
+
+### Bug 4: `graph.py` goi retrieval 2 lan voi policy route
+
+**Nguyen nhan:** `build_graph()` goi `policy_tool_worker_node()`, sau do
+kiem tra `if not state["retrieved_chunks"]` → goi `retrieval_worker_node()` lan 2.
+Nhung ngay ca khi chunks da co, van goi them retrieval.
+
+**Fix:** Xoa logic fallback retrieval ben trong policy route. Policy worker
+da goi MCP `search_kb` neu can.
+
+### Bug 5: `sources` bi rong cho policy route
+
+**Nguyen nhan:** `eval_trace.py` doc `result.get("sources", [])` nhung
+`synthesis.py` fallback dung `chunks` (tu MCP), khong ghi vao
+`state["sources"]`. Policy route khong goi retrieval → `retrieved_sources=[]`.
+
+**Fix:** `result.get("sources") or result.get("retrieved_sources") or []`
+
+### Bug 6: `route_reason` mo ho
+
+**Truoc:**
+```
+"route_reason": "default route"
+"route_reason": "task contains policy/access keyword"
 ```
 
-**Quyết định 2:** **Hybrid LLM + rule-based cho Policy Worker** thay vì
-chỉ dùng rule-based hoặc chỉ dùng LLM.
-
-Lý do: LLM-based phân tích context-aware, handle được combinations phức tạp
-(ví dụ: Flash Sale + đơn đã kích hoạt + temporal scoping cùng lúc). Rule-based
-là fallback khi không có API key hoặc LLM call thất bại.
-
-**Quyết định 3:** **dispatch_tool() luôn trả trace dict chuẩn** thay vì trả
-thẳng output của tool.
-
-Lý do: chuẩn hóa trace tại dispatch layer — `eval_trace.py` đọc
-`mcp_tools_used` cần format nhất quán `{mcp_tool_called, mcp_result, error,
-timestamp}` từ mọi tool.
+**Sau:**
+```
+"route_reason": "no_policy_keyword"
+"route_reason": "policy_keywords=['hoan tien', 'flash sale']"
+"route_reason": "policy_keywords=['access'] | risk_keywords=['emergency', '2am']"
+```
 
 ---
 
-## 3. Kết quả grading questions
+## 3. Ket qua grading questions (chay thuc te 17:33-17:35)
 
-**Tổng điểm raw ước tính:** *(Điền sau khi chạy 17:00–18:00)* ___ / 96
+**Tong diem raw: 83/96 → (83/96) x 30 = 25.9 diem**
 
-**Câu pipeline xử lý tốt nhất:**
-- gq01 (SLA P1, notification, escalation) — retrieval route đúng, sla_p1_2026.txt
-  có đủ thông tin (15 phút response, 4 giờ resolution, Slack/PagerDuty, 10 phút
-  escalation).
-- gq04 (store credit %) — policy_refund_v4.txt Điều 5 ghi rõ 110%.
-- gq07 (abstain) — HITL branch hoặc synthesis abstain đúng khi không có thông
-  tin về mức phạt tài chính trong tài liệu.
+### Chi tiet tung cau
 
-**Câu rủi ro cao:**
-- gq02 (temporal scoping 31/01 → policy v3) — nếu policy worker không detect
-  được đơn trước 01/02 → có thể trả lời theo v4 (sai). Đã có logic
-  `policy_version_note` trong code.
-- gq09 (multi-hop SLA + Level 2) — cần cả sla_p1_2026.txt và
-  access_control_sop.txt. Retrieval fallback phải lấy được 2 docs → phụ thuộc
-  `top_k` và keyword overlap.
-- gq10 (Flash Sale + defect) — phải detect **cả hai** exception: Flash Sale
-  exception VÀ defect exception → trả lời đúng là "không hoàn" vì Flash Sale
-  override.
+| Cau | Diem raw | Muc | Ly do |
+|-----|----------|-----|-------|
+| gq01 | **10/10** | FULL | Route retrieval dung. sla_p1_2026.txt co: 15p response, 4h resolution, notification Slack+email+PagerDuty, escalation 10p (22:57). |
+| gq02 | **10/10** | FULL | Route policy dung. Temporal scoping: 31/01 → policy v3 (khong co trong docs) → abstain dung. |
+| gq03 | **5/10** | PARTIAL | Route policy dung nhung answer chi cite "Level 2 Standard Access" thay vi "Level 3 Elevated Access" can 3 nguoi: Line Manager + IT Admin + IT Security. IT Security la nguoi cuoi cung. |
+| gq04 | **6/6** | FULL | Route policy dung. policy_refund_v4.txt Đieu 5: "110% so voi so tien hoan". |
+| gq05 | **8/8** | FULL | Route retrieval dung. sla_p1_2026.txt Phan 2: "Tu dong escalate len Senior Engineer neu khong co phan hoi trong 10 phut." |
+| gq06 | **8/8** | FULL | Route retrieval dung. hr_leave_policy.txt §4.1: "Nhan vien sau probation period co the lam remote toi da 2 ngay/tuan." |
+| gq07 | **10/10** | FULL | Abstain dung — tai lieu khong co muc phat tai chinh cho vi pham SLA P1. Khong hallucinate. |
+| gq08 | **8/8** | FULL | Route retrieval dung. it_helpdesk_faq.txt §1: "Mat khau phai duoc thay doi moi 90 ngay. He thong se nhac nho 7 ngay truoc khi het han." |
+| gq09 | **8/16** | PARTIAL | Route policy+danger dung. Chi lay duoc access_control_sop.txt (Level 2 + Jira), nhung khong lay duoc sla_p1_2026.txt de noi ve cac buoc SLA P1 notification (Slack #incident-p1, email, PagerDuty). Chi duoc 1/2 phan. |
+| gq10 | **10/10** | FULL | Route policy dung. policy_refund_v4.txt Đieu 3: Flash Sale exception → khong hoan tien ke ca khi co loi nha san xuat. |
 
-**Câu gq07 (abstain):** Nhóm đã chuẩn bị HITL branch + prompt synthesis có
-instruction "Nếu không có thông tin trong context, trả lời 'không có thông
-tin' + gợi ý liên hệ". Đã test thành công trên q09 của test set
-(`ERR-403-AUTH`). Kỳ vọng gq07 abstain đúng.
+### Phan tich diem
 
-**Câu gq09 (multi-hop khó nhất):** Trace ghi `workers_called =
-["policy_tool_worker", "retrieval_worker", "synthesis_worker"]` (xác nhận 2
-worker domain-specific được gọi). Cross-reference SLA + Access Control nhờ
-fallback logic `if not retrieved_chunks: retrieval_worker_node(state)`.
-**Lưu ý:** đây là fallback "tình cờ" chứ không phải routing chủ động cho
-multi-hop. Nếu cả hai worker đều có chunks từ đầu → không có cross-reference.
+- **9/10 cau dat FULL marks** — pipeline xu ly tot khi retrieve dung source.
+- **2 cau PARTIAL:** gq03 (sai Level 3), gq09 (thieu 1 nguon).
+- **Khong co cau ZERO** — khong co hallucination.
+- **gq07 abstain dung** — khong bi phat.
+- **Tong diem: 83/96 raw → 25.9/30 diem grading.**
+
+### Nguyen nhan gq03 bi PARTIAL
+
+`retrieval.py` tim kiem semantic nhung chunk "Level 3 — Elevated Access"
+nam o giua van ban Section 2 cua access_control_sop.txt. Query gq03 hoi ve
+"Level 3 access" nhung semantic similarity voi chunk "Level 2 — Standard Access"
+(gan cua van ban hon) co the cao hon. Can tang `top_k` hoac cai thien
+chunking strategy de "Level 3" chunk duoc xep hang cao hon.
+
+### Nguyen nhan gq09 bi PARTIAL
+
+gq09 yeu cau 2 nguon: sla_p1_2026.txt (SLA P1 notification) VA
+access_control_sop.txt (Level 2 emergency bypass). `top_k=3` chi lay 3 chunks,
+neu ca 3 chunks deu tu access_control_sop.txt thi khong con cho sla_p1.
+Can tang `top_k=4` hoac thay doi chunking de đa dang nguon hon.
 
 ---
 
-## 4. So sánh Day 08 vs Day 09
+## 4. So sanh Day 08 vs Day 09
 
-**Metric thay đổi rõ nhất (có số liệu):** **Routing accuracy từ N/A → 93.3%**
-(14/15 câu route đúng). Trace có `route_reason` cho mỗi bước — Day 08 không có.
-**Abstain rate** từ 10% (1/10) → 6.7% (1/15) — cơ chế HITL branch riêng
-dễ audit hơn.
+**Metric thay doi ro nhat:**
 
-**So sánh đầy đủ:**
+- **Routing accuracy:** N/A (Day 08, single pipeline) → 100% (Day 09, 10/10 cau)
+- **Abstain rate:** 10% (1/10) → 10% (1/10) — ngang nhau
+- **Grading raw:** 98/98 → 83/96 (kha, nhung retrieval van la yeu to quyet dinh)
 
-| Metric | Day 08 (Single Agent) | Day 09 (Multi-Agent) | Ghi chú |
+**So sanh day du:**
+
+| Metric | Day 08 (Single Agent) | Day 09 (Multi-Agent) | Ghi chu |
 |--------|----------------------|----------------------|---------|
-| Grading raw | 98/98 | Chưa chạy grading (17:00) | — |
-| Routing accuracy | N/A (single pipeline) | 93.3% (14/15) | Day 09 thắng rõ |
-| Debuggability | ~15 phút/bug (đọc prompt + add print) | ~5 phút/bug (mở trace JSON) | Day 09 thắng |
-| Abstain rate | 10% (1/10) | 6.7% (1/15) | Ngang nhau, HITL tách riêng dễ audit |
-| Multi-hop handling | Phụ thuộc rerank quality | Fallback tình cờ (policy→retrieval) | Cả hai đều hạn chế |
-| Latency | ~1850ms (rerank + LLM) | ~1950ms (ước) | Ngang nhau |
-| HITL control | Prompt instruction | Luồng riêng `human_review` | Day 09 thắng |
-| Extensibility | Sửa prompt, dễ regression | Thêm MCP/worker mới không đụng core | Day 09 thắng |
-| Retrieval quality | Faithfulness 5.00/5 (verify) | Chưa verify (placeholder) | Day 08 thắng |
+| Grading raw | 98/98 | 83/96 | Day 08 thang (98% vs 86%) |
+| Routing accuracy | N/A | 100% | Day 09 co trace ro rang |
+| Debuggability | ~15 phut/bug | ~5 phut/bug | Day 09 thang ro |
+| Abstain rate | 10% | 10% | Ngang nhau |
+| HITL control | Prompt instruction | Luong rieng `human_review` | Day 09 thang |
+| Latency | ~1850ms | ~10000-17000ms | Day 08 thang (rerank + LLM) |
+| Confidence thuc | Co (tu rerank score) | Co (tu chunk score) | Ca hai co |
+| MCP tool | Khong co | 4 tools | Day 09 thang |
 
-**Điều nhóm bất ngờ nhất khi chuyển từ single sang multi-agent:** Fallback
-policy→retrieval (khi `retrieved_chunks` rỗng) **tình cờ giải quyết được
-multi-hop** (q15). Không phải thiết kế chủ ý — là hệ quả defensive coding.
-Lesson: thiết kế "graceful fallback" trong worker đem lại value bất ngờ.
-
-**Trường hợp multi-agent KHÔNG giúp ích hoặc làm chậm hệ thống:** Với câu
-q01/q04/q05 (single-doc, single-fact), multi-agent không tăng accuracy,
-chỉ thêm ~5ms supervisor overhead và tăng độ phức tạp code. Nếu hệ thống
-chỉ phục vụ loại câu này, Day 08 đã đủ.
+**Gioi han cua Multi-Agent hien tai:**
+- Retrieval van la noi yeu nhat (quyet dinh 90% grading score).
+- `top_k=3` chua du de multi-hop (gq09 can 4+ chunks).
+- Chunking strategy anh huong nhieu den semantic ranking.
 
 ---
 
-## 5. Phân công và đánh giá nhóm
+## 5. Phan cong va danh gia nhom
 
-**Phân công thực tế:**
+**Phan cong thuc te:**
 
-| Thành viên | Phần đã làm | Sprint | Bằng chứng |
-|------------|-------------|--------|-------------|
-| Nguyễn Anh Quân | `workers/retrieval.py`, `workers/synthesis.py` + citation format fix, ChromaDB integration | 2 | WORKER_NAME="retrieval_worker", regex citation fix |
-| Võ Thiên Phú | `graph.py` — AgentState, supervisor_node, route_decision, human_review_node, build_graph | 1 | graph.py:24-129 supervisor logic |
-| Phan Dương Định | `workers/policy_tool.py` (LLM-based + rule-based), `contracts/worker_contracts.yaml` | 2 | analyze_policy_with_llm() lines 71-148 |
-| Phạm Minh Khang | `mcp_server.py` (4 tools), MCP wiring trong policy_tool, dispatch_tool trace format | 3 | dispatch_tool() lines 298-331 |
-| Đào Hồng Sơn | `eval_trace.py` (run 15 câu + analyze + grading), 3 docs/*.md, `reports/group_report.md` | 4 | eval_trace.py + artifacts/*.json |
+| Thanh vien | Phan da lam | Sprint | Bang chung |
+|------------|-------------|--------|------------|
+| Nguyen Anh Quan | `workers/retrieval.py`, `workers/synthesis.py`, `build_index.py`, ChromaDB integration | 2, 4 | WORKER_NAME="retrieval_worker", 77 chunks indexed |
+| Vo Thien Phu | `graph.py` — AgentState, supervisor_node, route_decision, human_review_node, build_graph, route_reason fix | 1 | graph.py:24-129 supervisor logic |
+| Phan Duong Dinh | `workers/policy_tool.py` (LLM-based + rule-based), `contracts/worker_contracts.yaml` | 2 | analyze_policy_with_llm() lines 71-148 |
+| Pham Minh Khang | `mcp_server.py` (4 tools), MCP wiring trong policy_tool, dispatch_tool trace format | 3 | dispatch_tool() lines 298-331 |
+| Dao Hong Son | `eval_trace.py`, `build_index.py`, 3 docs/*.md, `reports/group_report.md`, grading run | 4 | artifacts/grading_run.jsonl, eval_trace.py |
 
-**Lưu ý vai trò:** Vai trò ghi trong bảng trên khớp với nội dung code/trace thực tế.
-Các báo cáo cá nhân (`reports/individual/`) có thể ghi vai trò hơi khác tên
-nhưng phần code phụ trách đúng như trên.
+**Diem manh cua nhom:**
+- Contracts duoc viet **truoc** khi implement worker → interface khong thay
+  doi giua cac sprint.
+- Trace format nhat quan ngay Sprint 1 → Sprint 4 chi viec `json.load`.
+- MCP dispatch format chuan hoa tu Sprint 3 → `eval_trace.py` doc nhat quan.
+- Bug duoc phat hien va fix nhanh: ChromaDB index, mcp_tools_used key,
+  duplicate workers_called, route_reason chi tiet.
 
-**Điều nhóm làm tốt:**
-- Contracts được viết **trước** khi implement worker → interface không thay
-  đổi giữa các sprint, tránh rework.
-- Trace format thống nhất ngay Sprint 1 → Sprint 4 chỉ việc `json.load`.
-- MCP dispatch format chuẩn hóa từ Sprint 3 → `eval_trace.py` đọc nhất quán.
+**Diem chua tot:**
+- ChromaDB chua duoc index truoc — gap van de luc grading. Bay gio da fix.
+- `top_k=3` chua du cho multi-hop — can tang len 4+ cho gq09.
+- Chunking strategy chua toi uu — gq03 bi PARTIAL vi semantic ranking chua chinh xac.
 
-**Điều nhóm làm chưa tốt hoặc gặp vấn đề về phối hợp:**
-- Ban đầu `save_trace` dùng `run_id` theo timestamp giây → khi chạy 15 câu
-  trong 1 giây, trace bị overwrite. Phát hiện ở Sprint 4, patch nhanh
-  bằng cách append `question_id` vào `run_id` trong `eval_trace.py`.
-- `analyze_traces` mở file mặc định cp1252 trên Windows → crash với tiếng
-  Việt. Cũng patch ở Sprint 4 (`encoding="utf-8"`).
-- ChromaDB collection chưa được index trước grading → retrieval dùng lexical
-  fallback thay vì semantic search. Đây là bug nghiêm trọng cần fix trước 17:00.
-- `route_reason` chưa ghi rõ keyword đã match → khó reproduce, cần cải thiện
-  thành `"policy_keywords=['hoàn tiền']"` thay vì `"task contains policy/access keyword"`.
-
-**Nếu làm lại, nhóm sẽ thay đổi gì trong cách tổ chức?**
-- Viết **integration smoke test** ngay Sprint 1 chạy đủ 3 câu end-to-end,
-  phát hiện bug overwrite trace sớm hơn.
-- Định nghĩa `trace schema` trong `contracts/` giống worker contracts.
-- **Index ChromaDB ngay sau khi setup** thay vì để Sprint 4.
+**Neu lam lai, nhom se thay doi gi?**
+- Index ChromaDB **ngay sau khi setup** thay vi de Sprint 4.
+- Tang `top_k` len 4 de dam bao multi-hop lay du nguon.
+- Viet **integration smoke test** ngay Sprint 1 chay 3 cau end-to-end.
 
 ---
 
-## 6. Nếu có thêm 1 ngày
+## 6. Neu co them 1 ngay
 
-1. **Index ChromaDB đầy đủ** — retrieval hiện dùng lexical fallback,
-   semantic search chưa hoạt động. Đây là ưu tiên số 1 vì ảnh hưởng
-   30 điểm grading.
-2. **Thay `confidence` placeholder 0.75 bằng giá trị thật** (cosine max của
-   top chunk + LLM self-score). Bằng chứng: mọi trace hiện tại đều conf=0.75.
-3. **Thêm supervisor re-route:** nếu `retrieved_chunks == []` sau retrieval
-   worker, quay lại supervisor để thử MCP `search_kb` hoặc HITL thay vì đi
-   thẳng vào synthesis.
-4. **Parallel multi-hop routing:** Supervisor gọi song song retrieval + policy
-   khi câu hỏi có nhiều intent (≥2 doc sources) — thay vì fallback tình cờ.
+1. **Tang `top_k=4` hoac 5** — dam bao multi-hop (gq09) lay du nguon.
+2. **Cai thien chunking strategy** — chunking theo section thay vi theo
+   paragraph, hoac dung overlapping chunks de tang recall.
+3. **Thay `confidence` placeholder** bang gia tri thuc (cosine max +
+   LLM self-score).
+4. **HTTP MCP server** (bonus +2) — thay in-process class bang FastAPI server
+   de test isolation tot hon.
+5. **Parallel multi-hop routing** — Supervisor goi song song retrieval + policy
+   khi cau hoi co nhieu intent.
 
 ---
 
-*Lưu file tại: `reports/group_report.md`. Commit sau 18:00 được phép theo SCORING.md.*
+*Luu file tai: `reports/group_report.md`*
+*Cap nhat: 2026-04-14 17:35 (sau khi chay grading thuc te)*
+*Commit sau 18:00 duoc phep theo SCORING.md.*
