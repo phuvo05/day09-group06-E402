@@ -96,23 +96,28 @@ def supervisor_node(state: AgentState) -> AgentState:
 
     # Default: retrieval_worker
     route = "retrieval_worker"
-    route_reason = "default route"
+    route_reason = "no_policy_keyword"
     needs_tool = False
     risk_high = False
 
-    if any(kw in task for kw in policy_keywords):
+    matched_policy = [kw for kw in policy_keywords if kw in task]
+    if matched_policy:
         route = "policy_tool_worker"
-        route_reason = f"task contains policy/access keyword"
+        route_reason = f"policy_keywords={matched_policy}"
         needs_tool = True
 
-    if any(kw in task for kw in risk_keywords):
+    matched_risk = [kw for kw in risk_keywords if kw in task]
+    if matched_risk:
         risk_high = True
-        route_reason += " | risk_high flagged"
+        if matched_policy:
+            route_reason += f" | risk_keywords={matched_risk}"
+        else:
+            route_reason = f"risk_keywords={matched_risk}"
 
     # Human review override
     if risk_high and "err-" in task:
         route = "human_review"
-        route_reason = "unknown error code + risk_high → human review"
+        route_reason = f"risk_keywords=['err-'] | unknown error → human_review"
 
     state["supervisor_route"] = route
     state["route_reason"] = route_reason
@@ -175,9 +180,8 @@ from workers.synthesis import run as synthesis_run
 
 
 def retrieval_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi retrieval worker thực."""
-    state["workers_called"].append("retrieval_worker")
-    state["history"].append("[retrieval_worker] called")
+    """Wrapper goi retrieval worker thuc."""
+    # workers_called.append da duoc worker tu them
     result = retrieval_run(state)
     state["retrieved_chunks"] = result.get("retrieved_chunks", [])
     state["retrieved_sources"] = result.get("retrieved_sources", [])
@@ -186,9 +190,8 @@ def retrieval_worker_node(state: AgentState) -> AgentState:
 
 
 def policy_tool_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi policy/tool worker thực."""
-    state["workers_called"].append("policy_tool_worker")
-    state["history"].append("[policy_tool_worker] called")
+    """Wrapper goi policy/tool worker thuc."""
+    # workers_called.append da duoc worker tu them
     result = policy_tool_run(state)
     state["policy_result"] = result.get("policy_result", {})
     state["mcp_tools_used"] = result.get("mcp_tools_used", state.get("mcp_tools_used", []))
@@ -197,9 +200,8 @@ def policy_tool_worker_node(state: AgentState) -> AgentState:
 
 
 def synthesis_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi synthesis worker thực."""
-    state["workers_called"].append("synthesis_worker")
-    state["history"].append("[synthesis_worker] called")
+    """Wrapper goi synthesis worker thuc."""
+    # workers_called.append da duoc worker tu them
     result = synthesis_run(state)
     state["final_answer"] = result.get("final_answer", "")
     state["sources"] = result.get("sources", [])
@@ -238,9 +240,6 @@ def build_graph():
             state = retrieval_worker_node(state)
         elif route == "policy_tool_worker":
             state = policy_tool_worker_node(state)
-            # Policy worker may need retrieval context first
-            if not state["retrieved_chunks"]:
-                state = retrieval_worker_node(state)
         else:
             # Default: retrieval_worker
             state = retrieval_worker_node(state)
