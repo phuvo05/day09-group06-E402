@@ -96,8 +96,8 @@ retrieval_worker:
     - "Score phải là float trong khoảng [0, 1]"
     - "Stateless: không đọc hoặc ghi state ngoài những gì được khai báo ở trên"
   actual_implementation:
-    status: "TODO Sprint 2"  # Update to "done" khi xong
-    notes: ""
+    status: "done"
+    notes: "Implemented with dense retrieval using sentence-transformers embedding model. Queries ChromaDB collection. Fallback to empty list if no results found (no hallucination)."
 
 # ─────────────────────────────────────────────
 # Policy Tool Worker
@@ -166,8 +166,8 @@ policy_tool_worker:
     - "Phải ghi tên MCP tool đã gọi vào mcp_tools_used"
     - "Không được tự bịa policy rules không có trong tài liệu"
   actual_implementation:
-    status: "TODO Sprint 2"
-    notes: ""
+    status: "done"
+    notes: "Implemented with LLM-based analysis (GPT-4o-mini with JSON response format) with fallback to rule-based detection. Handles 3 main exception cases: flash_sale_exception, digital_product_exception, activated_exception. Detects temporal scoping (policy v3 vs v4). Integrates with MCP tools (search_kb, get_ticket_info) when needs_tool=True."
 
 # ─────────────────────────────────────────────
 # Synthesis Worker
@@ -214,8 +214,8 @@ synthesis_worker:
     - "confidence < 0.4 → khuyến khích set hitl_triggered=True"
     - "Không được dùng kiến thức ngoài context được cung cấp"
   actual_implementation:
-    status: "TODO Sprint 2"
-    notes: ""
+    status: "in_progress"
+    notes: "Partially implemented. Core grounded generation with LLM works. Some TODOs remain for LLM-as-Judge confidence calculation and edge cases."
 
 # ─────────────────────────────────────────────
 # MCP Server
@@ -271,4 +271,4 @@ mcp_server:
     - "Không được raise exception ra ngoài dispatch_tool()"
   actual_implementation:
     status: "TODO Sprint 3"
-    notes: ""
+    notes: "MCP server implementation pending. Will be implemented in Sprint 3 with dispatch_tool() function and mock tools."
