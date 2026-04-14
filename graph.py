@@ -83,28 +83,22 @@ def supervisor_node(state: AgentState) -> AgentState:
     1. Route sang worker nào
     2. Có cần MCP tool không
     3. Có risk cao cần HITL không
-
-    TODO Sprint 1: Implement routing logic dựa vào task keywords.
     """
     task = state["task"].lower()
     state["history"].append(f"[supervisor] received task: {state['task'][:80]}")
 
-    # --- TODO: Implement routing logic ---
-    # Gợi ý:
-    # - "hoàn tiền", "refund", "flash sale", "license" → policy_tool_worker
-    # - "cấp quyền", "access level", "level 3", "emergency" → policy_tool_worker
-    # - "P1", "escalation", "sla", "ticket" → retrieval_worker
-    # - mã lỗi không rõ (ERR-XXX), không đủ context → human_review
+    # Routing logic: keyword-based
+    # - policy_keywords → policy_tool_worker
+    # - risk_keywords + "err-" → human_review
     # - còn lại → retrieval_worker
-
-    route = "retrieval_worker"         # TODO: thay bằng logic thực
-    route_reason = "default route"    # TODO: thay bằng lý do thực
-    needs_tool = False
-    risk_high = False
-
-    # Ví dụ routing cơ bản — nhóm phát triển thêm:
     policy_keywords = ["hoàn tiền", "refund", "flash sale", "license", "cấp quyền", "access", "level 3"]
     risk_keywords = ["emergency", "khẩn cấp", "2am", "không rõ", "err-"]
+
+    # Default: retrieval_worker
+    route = "retrieval_worker"
+    route_reason = "default route"
+    needs_tool = False
+    risk_high = False
 
     if any(kw in task for kw in policy_keywords):
         route = "policy_tool_worker"
@@ -240,8 +234,7 @@ def build_graph():
     Option A (đơn giản — Python thuần): Dùng if/else, không cần LangGraph.
     Option B (nâng cao): Dùng LangGraph StateGraph với conditional edges.
 
-    Lab này implement Option A theo mặc định.
-    TODO Sprint 1: Có thể chuyển sang LangGraph nếu muốn.
+    Lab này implement Option A (Python thuần).
     """
     # Option A: Simple Python orchestrator
     def run(state: AgentState) -> AgentState:
@@ -337,4 +330,4 @@ if __name__ == "__main__":
         trace_file = save_trace(result)
         print(f"  Trace saved → {trace_file}")
 
-    print("\n✅ graph.py test complete. Implement TODO sections in Sprint 1 & 2.")
+    print("\n✅ graph.py test complete. Sprint 1 Supervisor done.")
