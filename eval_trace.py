@@ -285,15 +285,26 @@ def compare_single_vs_multi(
     multi_metrics = analyze_traces(multi_traces_dir)
     routing_acc = compute_routing_accuracy(multi_traces_dir)
 
-    # Baseline Day 08 — ước lượng từ lab Day 08 của nhóm (single-agent RAG).
-    # Nhóm có thể override bằng cách truyền day08_results_file.
+    # Baseline Day 08 — số thật từ lab Day 08 của nhóm 06-E402.
+    # Nguồn: day08-group06-E402/docs/tuning-log.md (scorecard Variant 1: dense + rerank)
+    #        day08-group06-E402/logs/grading_run.json (10 câu grading)
+    #        day08-group06-E402/reports/group_report.md
     day08_baseline = {
-        "total_questions": 15,
-        "avg_confidence": 0.62,
-        "avg_latency_ms": 1850,
-        "abstain_rate": "0/15 (0%)",
-        "multi_hop_accuracy": "1/3 (33%)",
-        "routing_visibility": "N/A (không có supervisor)",
+        "source": "day08-group06-E402 (tuning-log.md + grading_run.json)",
+        "pipeline": "single-agent RAG: dense retrieval + cross-encoder rerank, gpt-4o-mini",
+        "total_questions_grading": 10,
+        "grading_raw_score": "98/98",
+        "faithfulness": "5.00/5",
+        "answer_relevance": "4.60/5",
+        "context_recall": "5.00/5",
+        "completeness": "3.80/5",
+        "abstain_rate": "1/10 (10%)",
+        "abstain_example": "gq07 (Approval Matrix) — abstain đúng khi chunk thiếu alias",
+        "rerank_latency_overhead_ms": 1200,
+        "avg_latency_ms_est": 1850,
+        "multi_hop_accuracy": "N/A (Day 08 không phân loại multi-hop)",
+        "routing_visibility": "N/A (single-agent, không có supervisor)",
+        "weakest_questions_baseline": ["q07 (alias mapping)", "q09 (ERR-403 out-of-scope)", "q10 (VIP refund)"],
     }
 
     if day08_results_file and os.path.exists(day08_results_file):
