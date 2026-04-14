@@ -1,8 +1,11 @@
 # Báo Cáo Cá Nhân — Lab Day 09: Multi-Agent Orchestration
 
 **Họ và tên:** Đào Hồng Sơn (MSSV 2A202600462)
+
 **Vai trò trong nhóm:** Trace & Docs Owner (Sprint 4)
+
 **Nhóm:** Group 06 — E402
+
 **Ngày nộp:** 2026-04-14
 
 ---
