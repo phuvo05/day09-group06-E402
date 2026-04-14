@@ -29,30 +29,17 @@ WORKER_NAME = "policy_tool_worker"
 
 def _call_mcp_tool(tool_name: str, tool_input: dict) -> dict:
     """
-    Gọi MCP tool.
-
-    Sprint 3 TODO: Implement bằng cách import mcp_server hoặc gọi HTTP.
-
-    Hiện tại: Import trực tiếp từ mcp_server.py (trong-process mock).
+    Gọi MCP tool và trả về trace với mcp_tool_called + mcp_result.
     """
-    from datetime import datetime
-
     try:
-        # TODO Sprint 3: Thay bằng real MCP client nếu dùng HTTP server
         from mcp_server import dispatch_tool
-        result = dispatch_tool(tool_name, tool_input)
-        return {
-            "tool": tool_name,
-            "input": tool_input,
-            "output": result,
-            "error": None,
-            "timestamp": datetime.now().isoformat(),
-        }
+        return dispatch_tool(tool_name, tool_input)
     except Exception as e:
+        from datetime import datetime
         return {
-            "tool": tool_name,
-            "input": tool_input,
-            "output": None,
+            "mcp_tool_called": tool_name,
+            "mcp_input": tool_input,
+            "mcp_result": None,
             "error": {"code": "MCP_CALL_FAILED", "reason": str(e)},
             "timestamp": datetime.now().isoformat(),
         }
@@ -182,10 +169,11 @@ def run(state: dict) -> dict:
         if not chunks and needs_tool:
             mcp_result = _call_mcp_tool("search_kb", {"query": task, "top_k": 3})
             state["mcp_tools_used"].append(mcp_result)
-            state["history"].append(f"[{WORKER_NAME}] called MCP search_kb")
+            state["history"].append(f"[{WORKER_NAME}] mcp_tool_called={mcp_result.get('mcp_tool_called')}")
 
-            if mcp_result.get("output") and mcp_result["output"].get("chunks"):
-                chunks = mcp_result["output"]["chunks"]
+            kb_result = mcp_result.get("mcp_result") or {}
+            if kb_result.get("chunks"):
+                chunks = kb_result["chunks"]
                 state["retrieved_chunks"] = chunks
 
         # Step 2: Phân tích policy
@@ -196,7 +184,7 @@ def run(state: dict) -> dict:
         if needs_tool and any(kw in task.lower() for kw in ["ticket", "p1", "jira"]):
             mcp_result = _call_mcp_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
             state["mcp_tools_used"].append(mcp_result)
-            state["history"].append(f"[{WORKER_NAME}] called MCP get_ticket_info")
+            state["history"].append(f"[{WORKER_NAME}] mcp_tool_called={mcp_result.get('mcp_tool_called')}")
 
         worker_io["output"] = {
             "policy_applies": policy_result["policy_applies"],

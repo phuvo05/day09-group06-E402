@@ -305,26 +305,30 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> dict:
         tool_input: input dict (phải match với tool's inputSchema)
 
     Returns:
-        Tool output dict, hoặc error dict nếu thất bại
+        dict với keys: mcp_tool_called, mcp_result, error (nếu có)
     """
+    trace = {
+        "mcp_tool_called": tool_name,
+        "mcp_input": tool_input,
+        "mcp_result": None,
+        "error": None,
+        "timestamp": datetime.now().isoformat(),
+    }
+
     if tool_name not in TOOL_REGISTRY:
-        return {
-            "error": f"Tool '{tool_name}' không tồn tại. Available: {list(TOOL_REGISTRY.keys())}"
-        }
+        trace["error"] = f"Tool '{tool_name}' không tồn tại. Available: {list(TOOL_REGISTRY.keys())}"
+        return trace
 
     tool_fn = TOOL_REGISTRY[tool_name]
     try:
-        result = tool_fn(**tool_input)
-        return result
+        trace["mcp_result"] = tool_fn(**tool_input)
     except TypeError as e:
-        return {
-            "error": f"Invalid input for tool '{tool_name}': {e}",
-            "schema": TOOL_SCHEMAS[tool_name]["inputSchema"],
-        }
+        trace["error"] = f"Invalid input for tool '{tool_name}': {e}"
+        trace["schema"] = TOOL_SCHEMAS[tool_name]["inputSchema"]
     except Exception as e:
-        return {
-            "error": f"Tool '{tool_name}' execution failed: {e}",
-        }
+        trace["error"] = f"Tool '{tool_name}' execution failed: {e}"
+
+    return trace
 
 
 # ─────────────────────────────────────────────
@@ -344,35 +348,35 @@ if __name__ == "__main__":
     # 2. Test search_kb
     print("\n🔍 Test: search_kb")
     result = dispatch_tool("search_kb", {"query": "SLA P1 resolution time", "top_k": 2})
-    if result.get("chunks"):
-        for c in result["chunks"]:
-            print(f"  [{c.get('score', '?')}] {c.get('source')}: {c.get('text', '')[:70]}...")
-    else:
-        print(f"  Result: {result}")
+    print(f"  mcp_tool_called: {result['mcp_tool_called']}")
+    chunks = (result.get("mcp_result") or {}).get("chunks", [])
+    for c in chunks:
+        print(f"  [{c.get('score', '?')}] {c.get('source')}: {c.get('text', '')[:70]}...")
+    if result.get("error"):
+        print(f"  error: {result['error']}")
 
     # 3. Test get_ticket_info
     print("\n🎫 Test: get_ticket_info")
-    ticket = dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
+    result = dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
+    print(f"  mcp_tool_called: {result['mcp_tool_called']}")
+    ticket = result.get("mcp_result") or {}
     print(f"  Ticket: {ticket.get('ticket_id')} | {ticket.get('priority')} | {ticket.get('status')}")
-    if ticket.get("notifications_sent"):
-        print(f"  Notifications: {ticket['notifications_sent']}")
 
     # 4. Test check_access_permission
     print("\n🔐 Test: check_access_permission (Level 3, emergency)")
-    perm = dispatch_tool("check_access_permission", {
+    result = dispatch_tool("check_access_permission", {
         "access_level": 3,
         "requester_role": "contractor",
         "is_emergency": True,
     })
-    print(f"  can_grant: {perm.get('can_grant')}")
-    print(f"  required_approvers: {perm.get('required_approvers')}")
-    print(f"  emergency_override: {perm.get('emergency_override')}")
-    print(f"  notes: {perm.get('notes')}")
+    print(f"  mcp_tool_called: {result['mcp_tool_called']}")
+    perm = result.get("mcp_result") or {}
+    print(f"  can_grant: {perm.get('can_grant')}, emergency_override: {perm.get('emergency_override')}")
 
     # 5. Test invalid tool
     print("\n❌ Test: invalid tool")
     err = dispatch_tool("nonexistent_tool", {})
-    print(f"  Error: {err.get('error')}")
+    print(f"  mcp_tool_called: {err['mcp_tool_called']}, error: {err.get('error')}")
 
     print("\n✅ MCP server test done.")
     print("\nTODO Sprint 3: Implement HTTP server nếu muốn bonus +2.")
