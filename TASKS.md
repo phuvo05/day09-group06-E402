@@ -21,7 +21,7 @@
 - [ ] Implement `route_decision()` — routing logic theo keyword
 - [ ] Kết nối graph: `supervisor → route → workers → synthesis → END`
 - [ ] Chạy `graph.invoke()` với ≥2 test queries, log `route_reason`
-- [ ] Viết báo cáo cá nhân: `reports/individual/quan.md`
+- [ ] Viết báo cáo cá nhân: `reports/individual/nguyen_anh_quan.md`
 
 **Deadline code:** 18:00
 
@@ -33,7 +33,7 @@
 - [ ] Implement `workers/synthesis.py` — `run(state)`, gọi LLM, output có `answer`, `sources`, `confidence`
 - [ ] Test từng worker độc lập (không cần graph)
 - [ ] Đảm bảo synthesis trả về citation `[1]`, không hallucinate
-- [ ] Viết báo cáo cá nhân: `reports/individual/phu.md`
+- [ ] Viết báo cáo cá nhân: `reports/individual/vo_thien_phu.md`
 
 **Deadline code:** 18:00
 
@@ -44,7 +44,7 @@
 - [ ] Implement `workers/policy_tool.py` — `run(state)`, xử lý exception case (Flash Sale / digital product)
 - [ ] Điền/cập nhật `contracts/worker_contracts.yaml` cho cả 3 workers
 - [ ] Test `policy_tool.py` độc lập với ít nhất 1 exception case
-- [ ] Viết báo cáo cá nhân: `reports/individual/dinh.md`
+- [ ] Viết báo cáo cá nhân: `reports/individual/phan_duong_dinh.md`
 
 **Deadline code:** 18:00
 
@@ -55,7 +55,7 @@
 - [ ] Implement `mcp_server.py` với ≥2 tools: `search_kb()` và `get_ticket_info()`
 - [ ] Tích hợp MCP client vào `workers/policy_tool.py` (thay direct ChromaDB call)
 - [ ] Đảm bảo trace ghi `mcp_tool_called` và `mcp_result` cho mỗi lần gọi
-- [ ] Viết báo cáo cá nhân: `reports/individual/khang.md`
+- [ ] Viết báo cáo cá nhân: `reports/individual/pham_minh_khang.md`
 
 **Deadline code:** 18:00
 
@@ -70,7 +70,7 @@
 - [ ] Điền `docs/system_architecture.md` — sơ đồ pipeline + lý do chọn supervisor-worker
 - [ ] Viết `reports/group_report.md`
 - [ ] Chạy pipeline với `grading_questions.json` (17:00–18:00), nộp `artifacts/grading_run.jsonl`
-- [ ] Viết báo cáo cá nhân: `reports/individual/son.md`
+- [ ] Viết báo cáo cá nhân: `reports/individual/dao_hong_son.md`
 
 **Deadline code + grading log:** 18:00  
 **Deadline reports:** sau 18:00 được phép
